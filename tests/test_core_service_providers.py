@@ -50,6 +50,91 @@ class ServiceProviderBoundaryTests(unittest.TestCase):
                     },
                 )
 
+    def test_api_key_provider_names_are_unique_case_insensitively(self) -> None:
+        directory, domain = self._domain()
+        with directory:
+            domain.dispatch(
+                "provider.add",
+                {
+                    "provider": {
+                        "name": "Flux",
+                        "api_base": "https://flux.example.test/v1",
+                        "models": [],
+                    }
+                },
+            )
+            with self.assertRaisesRegex(DomainError, "already exists"):
+                domain.dispatch(
+                    "provider.add",
+                    {
+                        "provider": {
+                            "name": " flux ",
+                            "api_base": "https://other.example.test/v1",
+                            "models": [],
+                        }
+                    },
+                )
+            self.assertEqual(1, len(domain.snapshot()["providers"]))
+
+            second = domain.dispatch(
+                "provider.add",
+                {
+                    "provider": {
+                        "name": "Other",
+                        "api_base": "https://other.example.test/v1",
+                        "models": [],
+                    }
+                },
+            )
+            before_names = [item["name"] for item in domain.snapshot()["providers"]]
+            with self.assertRaisesRegex(DomainError, "already exists"):
+                domain.dispatch(
+                    "provider.patch",
+                    {
+                        "provider_id": second["providers"][1]["id"],
+                        "changes": {"name": "FLUX"},
+                    },
+                )
+            self.assertEqual(before_names, [item["name"] for item in domain.snapshot()["providers"]])
+
+    def test_relay_station_name_collision_is_case_insensitive(self) -> None:
+        directory, domain = self._domain()
+        with directory:
+            domain.dispatch(
+                "provider.add",
+                {
+                    "provider": {
+                        "name": "Flux",
+                        "api_base": "https://flux.example.test/v1",
+                        "models": [],
+                    }
+                },
+            )
+            second = domain.dispatch(
+                "provider.add",
+                {
+                    "provider": {
+                        "name": "Other",
+                        "api_base": "https://other.example.test/v1",
+                        "models": [],
+                    }
+                },
+            )
+            with self.assertRaisesRegex(DomainError, "already exists"):
+                domain.dispatch(
+                    "provider.select_relay_station",
+                    {
+                        "provider_id": second["providers"][1]["id"],
+                        "source": {
+                            "station_id": "station-flux",
+                            "name": "FLUX",
+                            "api_base": "https://relay.example.test/v1",
+                        },
+                    },
+                )
+            self.assertEqual("Flux", domain.snapshot()["providers"][0]["name"])
+            self.assertEqual("Other", domain.snapshot()["providers"][1]["name"])
+
     def test_service_provider_defaults_name_and_model(self) -> None:
         directory, domain = self._domain()
         with directory:
